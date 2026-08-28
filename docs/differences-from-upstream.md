@@ -4,10 +4,16 @@ This document describes how the KISTI NEURON reproduction workflow differs
 from the official MLCommons Training reference implementation for the
 Small LLM / Llama 3.1 8B workload.
 
-The goal of the KISTI repository is not to replace or redefine the MLPerf
-workload. It provides the environment adaptation, configuration, launch
-automation, preliminary validation support, and compatibility fixes required
-to reproduce and study the workload on the KISTI NEURON H200 system.
+The goal of this repository is not to replace or redefine the MLPerf workload.
+It provides environment adaptation, hardware-specific configuration, launch
+automation, compatibility fixes, preliminary validation support, and
+reproducibility metadata for NVIDIA GPU systems on KISTI NEURON.
+
+The currently documented reproduced configurations are:
+
+- NVIDIA H200: 2 GPUs, TP1/DP2
+- NVIDIA H200: 2 GPUs, TP2/DP1
+- NVIDIA A100: 8 GPUs, TP4/DP2
 
 ---
 
@@ -15,487 +21,375 @@ to reproduce and study the workload on the KISTI NEURON H200 system.
 
 Official repository:
 
-    https://github.com/mlcommons/training
+```text
+https://github.com/mlcommons/training
+```
 
 Upstream workload:
 
-    small_llm_pretraining/nemo
+```text
+small_llm_pretraining/nemo
+```
 
 Pinned upstream commit:
 
-    aa344c7fb900e82ed19fb94aebfed50c63ab2204
+```text
+aa344c7fb900e82ed19fb94aebfed50c63ab2204
+```
 
-The official MLCommons source is cloned under:
+The official source is cloned under:
 
-    $MLPERF_ROOT/training
+```text
+$MLPERF_ROOT/training
+```
 
-The Small LLM implementation is therefore located at:
+The Small LLM implementation is located at:
 
-    $MLPERF_ROOT/training/small_llm_pretraining/nemo
+```text
+$MLPERF_ROOT/training/small_llm_pretraining/nemo
+```
 
-Important upstream files include:
+The KISTI preparation workflow additionally installs hardware-specific runtime
+variants into the upstream workload directory.
 
-    Dockerfile.h200
-    Dockerfile.b200
-    Dockerfile.mi325
+H200 path:
 
-    config_H100_1x8x4_8b.sh
-    config_H200_1x8x1_8b.sh
-    config_MI325X_1x8x1_8b.sh
+```text
+pretrain_llama31_kisti.py
+run_llama31_kisti.sh
+```
 
-    pretrain_llama31.py
-    run_llama31.sh
+A100 path:
 
-    callbacks.py
-    requirements.txt
-    utils/
-    patches/
-
-The KISTI preparation workflow additionally installs:
-
-    pretrain_llama31_kisti.py
-    run_llama31_kisti.sh
-
-These KISTI variants are not part of the original upstream checkout.
+```text
+pretrain_llama31_a100.py
+run_llama31_a100.sh
+```
 
 ---
 
 ## 2. Overall Relationship
 
-The relationship between the two repositories is:
-
-    Official MLCommons Training
+```text
+Official MLCommons Training
         |
-        | defines the workload and reference implementation
-        |
+        | defines workload and reference implementation
         v
-    KISTI NEURON reproduction repository
+KISTI NEURON reproduction repository
         |
-        | adapts the execution environment
-        | adds reproducibility automation
-        | adds two-H200 experiment configurations
-        | adds compatibility fixes
-        | adds preliminary validation support
-        |
+        |-- adapts Docker-oriented execution to Singularity
+        |-- adds H200 and A100 experiment configurations
+        |-- adds KISTI launch automation
+        |-- adds runtime compatibility fixes
+        |-- adds preliminary validation support
+        |-- records reproducibility metadata
         v
-    KISTI NEURON H200 execution
+KISTI NEURON NVIDIA GPU execution
+```
 
-The KISTI repository therefore acts as a system-integration and
-reproducibility layer around the official workload.
+The KISTI repository acts as a system-integration and reproducibility layer
+around the official workload.
 
 ---
 
 ## 3. Container Runtime: Docker to Singularity
 
-### Official MLCommons workflow
+KISTI NEURON compute nodes use Singularity rather than Docker.
 
-The official Small LLM implementation provides Dockerfiles such as:
+The repository provides:
 
-    Dockerfile.h200
-
-The reference workflow assumes a Docker-compatible environment for building
-and running the benchmark container.
-
-Conceptually:
-
-    Dockerfile.h200
-        |
-        +-- Docker image
-        |
-        +-- run_llama31.sh
-        |
-        +-- pretrain_llama31.py
-        |
-        +-- NeMo / Megatron Core
-
-### KISTI NEURON workflow
-
-Docker is not available on the KISTI NEURON compute nodes.
-
-Therefore the KISTI workflow converts the container build and execution
-procedure to Singularity.
-
-The KISTI repository provides:
-
-    containers/mlperf-h200.def
+```text
+containers/mlperf-h200.def
+```
 
 which is used to build:
 
-    $MLPERF_ROOT/containers/mlperf-llama31-h200.sif
+```text
+$MLPERF_ROOT/containers/mlperf-llama31-h200.sif
+```
 
-using:
+The current image name contains `h200` for historical reasons. The same
+container environment is also used by the documented A100 reproduction path.
 
-    singularity build --fakeroot \
-        "$MLPERF_ROOT/containers/mlperf-llama31-h200.sif" \
-        containers/mlperf-h200.def
-
-The benchmark is then executed with:
-
-    singularity exec --nv ...
-
-rather than Docker.
-
-Singularity's `--nv` option exposes the NVIDIA devices and host driver
-libraries required by the container.
-
-This is an execution-environment adaptation. It does not modify the
-Llama 3.1 8B model or the MLPerf convergence target.
+This is an execution-environment adaptation and does not redefine the model,
+training algorithm, dataset, or convergence target.
 
 ---
 
-## 4. Official and KISTI Execution Paths
+## 4. KISTI Execution Paths
 
-### Official reference path
+### H200
 
-The upstream path is approximately:
-
-    Dockerfile.h200
-        |
-        +-- Docker container
-        |
-        +-- config_H200_1x8x1_8b.sh
-        |
-        +-- run_llama31.sh
-        |
-        +-- pretrain_llama31.py
-        |
-        +-- NeMo
-        |
-        +-- Megatron Core
-
-### KISTI NEURON path
-
-The KISTI execution path is:
-
-    containers/mlperf-h200.def
-        |
-        +-- Singularity SIF
-        |
-        +-- scripts/run_h200_tp1.sh
-        |       or
-        +-- scripts/run_h200_tp2.sh
+```text
+scripts/run_h200_tp1.sh or scripts/run_h200_tp2.sh
         |
         +-- scripts/run_h200.sh
+                |
+                +-- configs/h200/h200_2gpu_tp1_dp2.sh
+                |   or
+                +-- configs/h200/h200_2gpu_tp2_dp1.sh
+                        |
+                        +-- run_llama31_kisti.sh
+                                |
+                                +-- pretrain_llama31_kisti.py
+```
+
+### A100
+
+```text
+scripts/run_a100_tp4_dp2.sh
         |
-        +-- configs/h200/h200_2gpu_tp1_dp2.sh
-        |       or
-        +-- configs/h200/h200_2gpu_tp2_dp1.sh
-        |
-        +-- run_llama31_kisti.sh
-        |
-        +-- pretrain_llama31_kisti.py
-        |
-        +-- NeMo
-        |
-        +-- Megatron Core
+        +-- scripts/run_a100.sh
+                |
+                +-- configs/a100/a100_8gpu_tp4_dp2.sh
+                        |
+                        +-- run_llama31_a100.sh
+                                |
+                                +-- pretrain_llama31_a100.py
+```
 
 The KISTI scripts wrap and adapt the upstream workload rather than
 reimplementing the training stack.
 
 ---
 
-## 5. Two-H200 Experiment Configuration
+## 5. Hardware-Specific Configurations
 
-The upstream repository includes:
+### H200: 2 GPUs, TP1 / DP2
 
-    config_H200_1x8x1_8b.sh
+```text
+GPUs = 2
+TP   = 1
+DP   = 2
+MBS  = 1
+GBS  = 32
+```
 
-The current KISTI validation experiments use two H200 GPUs on a single
-NEURON node.
+### H200: 2 GPUs, TP2 / DP1
 
-Two configurations are provided:
+```text
+GPUs = 2
+TP   = 2
+DP   = 1
+MBS  = 1
+GBS  = 32
+```
 
-    configs/h200/h200_2gpu_tp1_dp2.sh
-    configs/h200/h200_2gpu_tp2_dp1.sh
+### A100: 8 GPUs, TP4 / DP2
 
-### TP1 / DP2
+```text
+GPUs = 8
+TP   = 4
+DP   = 2
+MBS  = 1
+GBS  = 32
+```
 
-    GPUs = 2
-    TP   = 1
-    DP   = 2
-    MBS  = 1
-    GBS  = 32
+Important A100-specific settings are:
 
-### TP2 / DP1
-
-    GPUs = 2
-    TP   = 2
-    DP   = 1
-    MBS  = 1
-    GBS  = 32
-
-These configurations allow controlled comparison of tensor-parallel and
-data-parallel execution on the same two-H200 allocation.
+```bash
+DISABLE_FP8=1
+ENABLE_RECOMPUTE=0
+DISABLE_CE_FUSION=0
+```
 
 ---
 
 ## 6. KISTI Runtime Variants
 
-### Upstream
+H200 variants:
 
-    pretrain_llama31.py
-    run_llama31.sh
+```text
+patches/pretrain_llama31_kisti.py
+patches/run_llama31_kisti.sh
+```
 
-### KISTI
+A100 variants:
 
-    patches/pretrain_llama31_kisti.py
-    patches/run_llama31_kisti.sh
+```text
+patches/pretrain_llama31_a100.py
+patches/run_llama31_a100.sh
+```
 
-During preparation, the KISTI variants are copied into:
+During preparation these files are copied into:
 
-    $MLPERF_ROOT/training/small_llm_pretraining/nemo
-
-as:
-
-    pretrain_llama31_kisti.py
-    run_llama31_kisti.sh
-
-The original upstream files remain available so that the changes can be
-inspected directly.
+```text
+$MLPERF_ROOT/training/small_llm_pretraining/nemo
+```
 
 ---
 
-## 7. Preliminary Validation with the Last 256 C4 Shards
+## 7. Shared Dataset and Tokenizer
 
-The KISTI implementation adds:
+The H200 and A100 reproductions reuse the same validated preprocessed C4
+dataset and the same Llama 3.1 tokenizer.
 
-    --use_last_256_shards
+Typical shared paths are:
 
-This option was introduced as a preliminary validation mode before performing
-a full-dataset benchmark run.
+```text
+$MLPERF_ROOT/data/C4_processed
+$MLPERF_ROOT/models/Llama-3.1-8B
+```
 
-The purpose was to verify that the complete end-to-end workflow operated
-correctly on KISTI NEURON before committing to a full C4 benchmark execution.
-
-The preliminary validation checks include:
-
-- container construction and execution
-- Singularity GPU access
-- C4 dataset access
-- tokenizer loading
-- NeMo initialization
-- Megatron Core initialization
-- distributed multi-GPU training
-- MLPerf logging
-- convergence behavior
-- long-running job stability
-- result and log generation
-
-The original C4 training data contains 1024 raw shards.
-
-In the consolidated KISTI preprocessing layout:
-
-    c4-train.en_0  <- raw shards   0-127
-    c4-train.en_1  <- raw shards 128-255
-    c4-train.en_2  <- raw shards 256-383
-    c4-train.en_3  <- raw shards 384-511
-    c4-train.en_4  <- raw shards 512-639
-    c4-train.en_5  <- raw shards 640-767
-    c4-train.en_6  <- raw shards 768-895
-    c4-train.en_7  <- raw shards 896-1023
-
-Therefore the final 256 raw shards correspond to:
-
-    c4-train.en_6
-    c4-train.en_7
-
-The KISTI code explicitly selects these two consolidated datasets when
-`--use_last_256_shards` is enabled.
-
-This reduced-data mode is a preliminary validation mechanism.
-
-It was not introduced to redefine the official MLPerf dataset or to replace
-the intended full-dataset benchmark configuration.
-
-After validating the end-to-end workflow, the intended next step is to run
-the workload using the full dataset configuration.
+Symbolic links may be used to reuse an existing validated dataset and tokenizer.
 
 ---
 
-## 8. Source-Level Changes in `pretrain_llama31_kisti.py`
+## 8. Experiment-Specific NPY / Dataset Index Cache
 
-The KISTI variant adds support for:
+Megatron/NeMo may generate runtime document, sample, and shuffle indices.
 
-    --use_last_256_shards
+Separate cache directories are used per experiment, for example:
 
-and explicitly maps that option to:
+```text
+$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp1_dp2
+$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp2_dp1
+$MLPERF_ROOT/data/npy_indices/a100_8gpu_tp4_dp2
+```
 
-    c4-train.en_6_text_document
-    c4-train.en_7_text_document
-
-Additional changes include limited checkpoint-handling adjustments used by
-the KISTI experiment workflow.
-
-The exact source-level differences are recorded in:
-
-    reproducibility/pretrain_llama31_kisti.diff
+The separation is primarily for reproducibility and experiment isolation, not
+simply because the GPU generation differs.
 
 ---
 
-## 9. Source-Level Changes in `run_llama31_kisti.sh`
+## 9. Preliminary Validation with the Last 256 C4 Shards
 
-The KISTI variant adds:
+The KISTI runtime supports:
 
-- `INITIAL_CKPT` handling
-- explicit propagation of `MAX_LR`
+```text
+--use_last_256_shards
+```
+
+This is used for preliminary validation before a full-dataset benchmark run.
+
+In the consolidated KISTI preprocessing layout, the final 256 raw shards map to:
+
+```text
+c4-train.en_6
+c4-train.en_7
+```
+
+This reduced-data mode validates container execution, GPU access, dataset and
+tokenizer loading, NeMo/Megatron initialization, distributed training, MLPerf
+logging, convergence behavior, long-running stability, and result generation.
+
+It does not redefine the official MLPerf Training dataset.
+
+Results produced with this mode should be described as preliminary,
+reproduction, or performance-engineering results rather than official
+full-dataset MLPerf submissions.
+
+---
+
+## 10. H200 Source-Level Changes
+
+`pretrain_llama31_kisti.py` adds support for:
+
+```text
+--use_last_256_shards
+```
+
+and maps it to:
+
+```text
+c4-train.en_6_text_document
+c4-train.en_7_text_document
+```
+
+`run_llama31_kisti.sh` adds or propagates:
+
+- `INITIAL_CKPT`
+- `MAX_LR`
 - `--use_last_256_shards`
 - invocation of `pretrain_llama31_kisti.py`
 
-The exact source-level differences are recorded in:
+Exact H200 source differences are recorded in:
 
-    reproducibility/run_llama31_kisti.diff
-
----
-
-## 10. Python `pangu` Compatibility Fix
-
-The KISTI repository contains:
-
-    patches/pythonfix/pangu.py
-
-This file is not part of the official MLCommons Small LLM reference
-implementation.
-
-During execution of the selected NVIDIA PyTorch / NeMo environment, NeMo
-imports:
-
-    from pangu import spacing
-
-The `pangu` package installed in the container does not expose the API
-expected by this version of NeMo.
-
-Without the compatibility fix, startup fails with:
-
-    ImportError: cannot import name 'spacing' from 'pangu'
-
-The KISTI launcher therefore prepends:
-
-    $REPO_ROOT/patches/pythonfix
-
-to:
-
-    PYTHONPATH
-
-so that the compatible:
-
-    patches/pythonfix/pangu.py
-
-is loaded before the incompatible container-installed package.
-
-This is an environment compatibility workaround.
-
-It does not modify:
-
-- the Llama model architecture
-- the optimizer
-- the training algorithm
-- the C4 data itself
-- the global batch size
-- the MLPerf convergence criterion
+```text
+reproducibility/pretrain_llama31_kisti.diff
+reproducibility/run_llama31_kisti.diff
+```
 
 ---
 
-## 11. Dataset File Layout
+## 11. A100-Specific Runtime Controls
 
-The Megatron binary dataset files used by this workflow include:
+The final documented A100 TP4/DP2 reproduction uses:
 
-    c4-train.en_6_text_document.bin
-    c4-train.en_6_text_document.idx
-    c4-train.en_7_text_document.bin
-    c4-train.en_7_text_document.idx
+```bash
+DISABLE_FP8=1
+ENABLE_RECOMPUTE=0
+DISABLE_CE_FUSION=0
+```
 
-Validation uses:
+The A100 code retains optional controls for activation recomputation and
+cross-entropy fusion for debugging and experimentation.
 
-    c4-validation-91205-samples.en_text_document.bin
-    c4-validation-91205-samples.en_text_document.idx
+These optional controls are not enabled in the final documented TP4/DP2
+configuration.
 
-Because the complete preprocessed C4 dataset requires several hundred GB,
-the KISTI workflow supports either:
-
-    downloading / preprocessing the data
-
-or:
-
-    reusing an existing validated dataset through symbolic links
-
-The symbolic-link mechanism is a storage optimization and does not alter the
-underlying benchmark input.
+See `docs/a100-notes.md`.
 
 ---
 
-## 12. Long-Running Job Handling
+## 12. Python `pangu` Compatibility Fix
 
-Small LLM training on two H200 GPUs can require many hours.
+The repository contains:
 
-The KISTI launcher uses:
+```text
+patches/pythonfix/pangu.py
+```
 
-    nohup
+The KISTI launcher prepends this directory to `PYTHONPATH` to avoid:
 
-to keep the benchmark process running after an interactive SSH session is
-disconnected.
+```text
+ImportError: cannot import name 'spacing' from 'pangu'
+```
 
-For example:
+This is an environment compatibility workaround and does not modify the model,
+optimizer, training algorithm, dataset, global batch size, or convergence
+criterion.
 
-    ./scripts/run_h200_tp1.sh
+---
 
-starts the Singularity execution in the background and reports:
+## 13. Long-Running Job Handling
 
-    PID=<pid>
-    LOG=<launcher-log>
+The KISTI launchers use `nohup` so that the benchmark process can continue
+after an interactive SSH shell disconnects.
 
 The underlying Slurm allocation must remain active for the entire run.
 
-`nohup` protects against loss of the interactive shell but does not extend
-the Slurm allocation time.
-
 ---
 
-## 13. Reproducibility Automation
-
-The KISTI repository provides preparation and launch scripts that are not part
-of the upstream MLCommons repository.
+## 14. Reproducibility Automation
 
 Representative files include:
 
-    scripts/01_prepare_directories.sh
-    scripts/02_prepare_mlcommons_source.sh
-    scripts/03_download_preprocessed_data.sh
+```text
+scripts/01_prepare_directories.sh
+scripts/02_prepare_mlcommons_source.sh
+scripts/03_download_preprocessed_data.sh
 
-    scripts/run_h200.sh
-    scripts/run_h200_tp1.sh
-    scripts/run_h200_tp2.sh
+scripts/run_h200.sh
+scripts/run_h200_tp1.sh
+scripts/run_h200_tp2.sh
 
-    configs/h200/h200_2gpu_tp1_dp2.sh
-    configs/h200/h200_2gpu_tp2_dp1.sh
+scripts/run_a100.sh
+scripts/run_a100_tp4_dp2.sh
 
-    containers/mlperf-h200.def
-
-    patches/pretrain_llama31_kisti.py
-    patches/run_llama31_kisti.sh
-    patches/pythonfix/pangu.py
+configs/h200/h200_2gpu_tp1_dp2.sh
+configs/h200/h200_2gpu_tp2_dp1.sh
+configs/a100/a100_8gpu_tp4_dp2.sh
+```
 
 The objective is to allow a new NEURON user to reproduce the experiment from
-a clean working directory without depending on undocumented shell history or
-previous local state.
-
----
-
-## 14. Source-Level Reproducibility Records
-
-Exact source differences from the pinned MLCommons reference are stored in:
-
-- [`../reproducibility/pretrain_llama31_kisti.diff`](../reproducibility/pretrain_llama31_kisti.diff)
-- [`../reproducibility/run_llama31_kisti.diff`](../reproducibility/run_llama31_kisti.diff)
-
-These files allow the KISTI modifications to be inspected and audited
-independently of this documentation.
+a clean working directory without depending on undocumented shell history.
 
 ---
 
 ## 15. What Remains Based on the Official Reference
 
-The following major components remain based on the official MLCommons
-reference workload:
+The following remain based on the official MLCommons reference workload:
 
 - Llama 3.1 8B model
 - NVIDIA NeMo training stack
@@ -505,70 +399,55 @@ reference workload:
 - tokenizer
 - validation procedure
 - convergence target
-- general Small LLM benchmark structure
-
-The KISTI repository primarily changes the surrounding execution,
-configuration, compatibility, and reproducibility environment.
+- general Small LLM workload structure
 
 ---
 
 ## 16. Preliminary Validation vs Full Benchmark
 
-It is important to distinguish the current reduced-data validation workflow
-from the intended full benchmark.
+The current preliminary reproduction path uses:
 
-### Preliminary KISTI validation
+```text
+--use_last_256_shards
+```
 
-    --use_last_256_shards
-
-uses:
-
-    en_6 + en_7
-
-and is intended to validate the entire execution pipeline.
-
-### Full benchmark
-
-The next phase is to use the full dataset configuration after the execution
-environment and workflow have been validated successfully.
-
-Results produced by the preliminary validation configuration should therefore
-be identified explicitly as validation/performance-engineering results rather
-than being presented as an official MLCommons submission.
+A full-dataset run should disable the preliminary last-256-shard selection and
+be validated separately.
 
 ---
 
 ## 17. Official Submission Status
 
-This repository is intended for:
+This repository is intended for reproducibility testing, environment
+validation, performance engineering, and preparation for larger-scale MLPerf
+experiments.
 
-- reproducibility testing
-- environment validation
-- performance engineering
-- preparation for larger-scale MLPerf experiments
-
-A successful run with this repository should not automatically be interpreted
-as an official MLCommons submission.
+A successful run should not automatically be interpreted as an official
+MLCommons submission.
 
 Official submission requires compliance with the applicable MLPerf Training
-rules, system description requirements, compliance tests, result packaging,
+rules, system-description requirements, compliance tests, result packaging,
 and MLCommons review process.
 
 ---
 
 ## 18. Summary
 
-The main adaptations can be grouped into two categories.
-
 ### Environment adaptations
 
 - Docker to Singularity
-- KISTI NEURON storage and directory layout
-- two-H200 configuration
+- KISTI NEURON directory and storage layout
 - Singularity launch wrappers
 - `nohup` background execution
 - Python `pangu` compatibility fix
 - reproducibility automation
+
+### Hardware-specific configurations
+
+- H200 2-GPU TP1/DP2
+- H200 2-GPU TP2/DP1
+- A100 8-GPU TP4/DP2
+- A100 FP8 control and related runtime options
 
 ### Preliminary validation support
 
@@ -577,5 +456,4 @@ The main adaptations can be grouped into two categories.
 - intended for end-to-end validation before a full-dataset benchmark run
 
 The guiding principle is to keep the official workload as intact as possible
-while making every KISTI-specific change explicit, traceable, and
-reproducible.
+while making every KISTI-specific change explicit, traceable, and reproducible.
