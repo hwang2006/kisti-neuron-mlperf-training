@@ -20,7 +20,7 @@ case "$MODE" in
 esac
 
 NEMO_DIR="$MLPERF_ROOT/training/small_llm_pretraining/nemo"
-IMAGE="$MLPERF_ROOT/containers/mlperf-llama31-h200.sif"
+export IMAGE="$MLPERF_ROOT/containers/mlperf-llama31-h200.sif"
 
 if [ ! -f "$CONFIG" ]; then
     echo "ERROR: config not found: $CONFIG" >&2
@@ -66,7 +66,7 @@ nohup singularity exec --nv \
     --bind "$PREPROCESSED_PATH:/preproc_data" \
     --bind "$TOKENIZER_PATH:/tokenizer" \
     --bind "$TMP_NPY_INDEX:/npy_index" \
-    --bind "$JOB_DIR:/output" \
+    --bind "$JOB_DIR:/outputs" \
     --bind "$JOB_DIR:/mlperf-outputs" \
     "$IMAGE" \
     /bin/bash -c "
