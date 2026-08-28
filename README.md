@@ -2,7 +2,7 @@
 
 This repository provides a reproducible workflow for running the
 **MLPerf Training Small LLM / Llama 3.1 8B workload** on the
-KISTI NEURON GPU cluster using NVIDIA GPUs.
+[KISTI NEURON GPU cluster](https://www.ksc.re.kr/eng/resources/neuron) using NVIDIA GPUs.
 
 The current repository documents reproduced configurations on:
 
