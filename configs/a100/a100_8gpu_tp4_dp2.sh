@@ -88,7 +88,7 @@ export TOKENIZER_PATH="$MLPERF_ROOT/models/Llama-3.1-8B"
 export PREPROCESSED_PATH="$MLPERF_ROOT/data/C4_processed"
 
 # Per-experiment dataset index cache.
-export TMP_NPY_INDEX="$MLPERF_ROOT/data/npy_indices/a100_8gpu_tp4_dp2"
+export TMP_NPY_INDEX="$MLPERF_ROOT/data/npy_indices/a100_8gpu_tp4_dp2_full"
 
 # ----------------------------------------------------------------------
 # Output
@@ -100,3 +100,7 @@ export TRITON_LIBCUDA_PATH="/.singularity.d/libs"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
 export DGXSYSTEM="KISTI_NEURON_A100_8GPU_TP4_DP2"
+
+export USE_LAST_256_SHARDS=0
+
+export USE_FULL_DATASET=1

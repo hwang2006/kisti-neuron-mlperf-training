@@ -16,8 +16,12 @@ Common parameters:
 - Target validation log perplexity: 3.3
 - Checkpoint saving: disabled
 
-The runs documented here use the preliminary `--use_last_256_shards` mode.
-They are reproduction results, not official full-dataset MLPerf submissions.
+The historical results documented below were obtained with the preliminary
+`--use_last_256_shards` mode and are retained for reproducibility.
+
+The current benchmark configurations default to the full preprocessed C4
+training dataset (`c4-train.en_0` through `c4-train.en_7`). Full-dataset
+results will be recorded separately after successful completion.
 
 ---
 
@@ -186,8 +190,11 @@ All successful runs listed above satisfied the target.
 
 ## Dataset Scope
 
-The current KISTI reproduction workflow uses `--use_last_256_shards` for
-preliminary end-to-end validation.
+The current KISTI benchmark workflow defaults to the full preprocessed C4
+training dataset (`c4-train.en_0` through `c4-train.en_7`).
+
+The historical results above used `--use_last_256_shards` for preliminary
+end-to-end validation.
 
 This selects the consolidated C4 datasets corresponding to the final 256 raw
 training shards:
@@ -197,9 +204,9 @@ c4-train.en_6
 c4-train.en_7
 ```
 
-This mode is used to validate the execution pipeline before a full-dataset
-benchmark run. It should not be interpreted as redefining the official MLPerf
-Training dataset.
+This mode was used to validate the execution pipeline before the full-dataset
+benchmark configuration became the default. It should not be interpreted as
+redefining the official MLPerf Training dataset.
 
 ---
 

@@ -92,11 +92,11 @@ A100_RUNNER="$REPO_ROOT/patches/run_llama31_a100.sh"
 
 if [ -f "$A100_PRETRAIN" ]; then
     cp -f "$A100_PRETRAIN" \
-        "$NEMO_DIR/pretrain_llama31_a100.py"
+        "$NEMO_ROOT/pretrain_llama31_a100.py"
 fi
 
 if [ -f "$A100_RUNNER" ]; then
     cp -f "$A100_RUNNER" \
-        "$NEMO_DIR/run_llama31_a100.sh"
-    chmod +x "$NEMO_DIR/run_llama31_a100.sh"
+        "$NEMO_ROOT/run_llama31_a100.sh"
+    chmod +x "$NEMO_ROOT/run_llama31_a100.sh"
 fi

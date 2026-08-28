@@ -43,7 +43,7 @@ export PREPROCESSED_PATH="$MLPERF_ROOT/data/C4_processed"
 export MERGED_C4_PATH="$MLPERF_ROOT/data/C4_merged"
 export TOKENIZER_PATH="$MLPERF_ROOT/models/Llama-3.1-8B"
 
-export TMP_NPY_INDEX="$MLPERF_ROOT/data/npy_indices_h200_tp2"
+export TMP_NPY_INDEX="$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp2_dp1_full"
 export JOB_DIR="$MLPERF_ROOT/logs/mlperf-h200-tp2"
 export CONTINUAL_CKPT="$MLPERF_ROOT/checkpoints/continual"
 
@@ -55,3 +55,7 @@ export TRITON_LIBCUDA_PATH="/.singularity.d/libs"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
 export DGXSYSTEM="KISTI_NEURON_H200_2GPU_TP2"
+
+export USE_LAST_256_SHARDS=0
+
+export USE_FULL_DATASET=1

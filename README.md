@@ -36,7 +36,9 @@ metadata.
 | NVIDIA A100 | 8 | 4 | 2 | 32 | 1 | reproduced |
 
 The H200 and A100 experiments reuse the same preprocessed C4 dataset and
-the same Llama 3.1 tokenizer.
+the same Llama 3.1 tokenizer. The active configurations now default to the full
+preprocessed C4 training set; previously recorded reduced-data results are kept
+as historical reproducibility references.
 
 Experiment-specific NPY/index caches are stored separately.
 
@@ -57,7 +59,7 @@ The main KISTI adaptations include:
 - KISTI launch and reproducibility automation
 - Python runtime compatibility fixes
 - A100-specific FP8 control
-- preliminary validation using the last 256 C4 shards before a full-dataset run
+- full-dataset C4 benchmark execution by default, with optional last-256-shard validation mode
 
 For a detailed description of the KISTI changes and their relationship to the
 upstream implementation, see:
@@ -99,9 +101,9 @@ $MLPERF_ROOT/
 ├── data/
 │   ├── C4_processed/
 │   └── npy_indices/
-│       ├── h200_2gpu_tp1_dp2/
-│       ├── h200_2gpu_tp2_dp1/
-│       └── a100_8gpu_tp4_dp2/
+│       ├── h200_2gpu_tp1_dp2_full/
+│       ├── h200_2gpu_tp2_dp1_full/
+│       └── a100_8gpu_tp4_dp2_full/
 ├── models/
 │   └── Llama-3.1-8B/
 ├── checkpoints/
@@ -353,13 +355,17 @@ indices from different configurations.
 Examples:
 
 ```text
-$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp1_dp2
-$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp2_dp1
-$MLPERF_ROOT/data/npy_indices/a100_8gpu_tp4_dp2
+$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp1_dp2_full
+$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp2_dp1_full
+$MLPERF_ROOT/data/npy_indices/a100_8gpu_tp4_dp2_full
 ```
 
 The GPU generation itself is not the fundamental reason for separate caches;
 the separation is primarily for reproducibility and experiment isolation.
+
+Full-dataset and reduced-data runs should use separate cache directories so
+that Megatron/NeMo sample, document, and shuffle mappings are not mixed across
+different dataset selections.
 
 ---
 
@@ -434,6 +440,13 @@ Config file:
 configs/h200/h200_2gpu_tp1_dp2.sh
 ```
 
+The active configuration defaults to the full preprocessed C4 dataset:
+
+```bash
+export USE_FULL_DATASET=1
+export USE_LAST_256_SHARDS=0
+```
+
 Run:
 
 ```bash
@@ -478,6 +491,13 @@ Config file:
 
 ```text
 configs/h200/h200_2gpu_tp2_dp1.sh
+```
+
+The active configuration defaults to the full preprocessed C4 dataset:
+
+```bash
+export USE_FULL_DATASET=1
+export USE_LAST_256_SHARDS=0
 ```
 
 Run:
@@ -561,6 +581,8 @@ Important A100-specific settings:
 export DISABLE_FP8=1
 export ENABLE_RECOMPUTE=0
 export DISABLE_CE_FUSION=0
+export USE_FULL_DATASET=1
+export USE_LAST_256_SHARDS=0
 ```
 
 `DISABLE_FP8=1` selects the A100-compatible BF16 path instead of the FP8
@@ -634,8 +656,9 @@ The historical KISTI A100 reproduction produced:
 | Train samples at run stop | 233472 |
 | Status | success |
 
-This result is included as a reproducibility reference and is not presented as
-an official MLPerf submission.
+This historical result used the preliminary `--use_last_256_shards` mode
+(`c4-train.en_6` and `c4-train.en_7`). It is retained as a reproducibility
+reference and is not presented as an official full-dataset MLPerf submission.
 
 See:
 
@@ -645,18 +668,28 @@ results/a100/8gpu_tp4_dp2/README.md
 
 ---
 
-## 15. Dataset Selection and Preliminary Validation
+## 15. Dataset Selection
 
-The current KISTI reproduction path uses:
+The default KISTI benchmark configuration uses the full preprocessed C4
+training dataset:
 
 ```text
---use_last_256_shards
+c4-train.en_0
+c4-train.en_1
+c4-train.en_2
+c4-train.en_3
+c4-train.en_4
+c4-train.en_5
+c4-train.en_6
+c4-train.en_7
 ```
 
-for **preliminary validation before a full-dataset benchmark run**.
+The active H200 and A100 benchmark configurations use:
 
-This option was introduced to verify that the complete workflow executes
-correctly before committing substantial resources to a full-dataset run.
+```bash
+export USE_FULL_DATASET=1
+export USE_LAST_256_SHARDS=0
+```
 
 The consolidated C4 shards are organized approximately as:
 
@@ -671,24 +704,32 @@ c4-train.en_6  <- raw shards 768-895
 c4-train.en_7  <- raw shards 896-1023
 ```
 
-The preliminary mode uses:
+For quick end-to-end validation or debugging, an optional reduced-data mode
+can be enabled with:
+
+```bash
+export USE_FULL_DATASET=0
+export USE_LAST_256_SHARDS=1
+```
+
+This reduced mode selects:
 
 ```text
 c4-train.en_6
 c4-train.en_7
 ```
 
-and the validation subset:
+representing the final 256 raw C4 shards.
+
+The validation subset remains:
 
 ```text
 c4-validation-91205-samples.en
 ```
 
-This shard selection should not be interpreted as redefining the official
-MLPerf Training dataset.
-
-A future full-dataset run should remove or otherwise disable the preliminary
-last-256-shard selection and be validated separately.
+Reduced-data runs are intended for workflow validation and debugging. They
+should not be compared directly with full-dataset benchmark results and should
+not be described as official full-dataset MLPerf submissions.
 
 ---
 
@@ -708,14 +749,17 @@ du -shL \
     "$MLPERF_ROOT/data/C4_processed"
 ```
 
-Verify the training shards used by preliminary validation:
+Verify all eight preprocessed training shards used by the default
+full-dataset configuration:
 
 ```bash
-ls -lh \
-    "$MLPERF_ROOT/data/C4_processed/c4-train.en_6_text_document.bin" \
-    "$MLPERF_ROOT/data/C4_processed/c4-train.en_6_text_document.idx" \
-    "$MLPERF_ROOT/data/C4_processed/c4-train.en_7_text_document.bin" \
-    "$MLPERF_ROOT/data/C4_processed/c4-train.en_7_text_document.idx"
+DATA="$MLPERF_ROOT/data/C4_processed"
+
+for i in {0..7}; do
+    ls -lh \
+        "$DATA/c4-train.en_${i}_text_document.bin" \
+        "$DATA/c4-train.en_${i}_text_document.idx"
+done
 ```
 
 Verify the validation data:
@@ -869,6 +913,9 @@ metadata required to reconstruct the environment.
 ---
 
 ## 20. Quick Start
+
+The active benchmark configurations default to the full preprocessed C4
+dataset. Reduced-data validation is opt-in.
 
 ### Common preparation
 

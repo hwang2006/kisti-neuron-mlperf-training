@@ -132,7 +132,14 @@ if [ ! -d /mlperf-outputs ]; then mkdir /mlperf-outputs; fi
 set -x
 
 CMD_SUFFIX="${CMD_SUFFIX} --max_lr ${MAX_LR}"
-CMD_SUFFIX="${CMD_SUFFIX} --use_last_256_shards"
+
+if [ "${USE_FULL_DATASET:-1}" -gt 0 ]; then
+    CMD_SUFFIX="${CMD_SUFFIX} --use_full_dataset"
+fi
+
+if [ "${USE_LAST_256_SHARDS:-0}" -gt 0 ]; then
+    CMD_SUFFIX="${CMD_SUFFIX} --use_last_256_shards"
+fi
 
 if [ "${DISABLE_FP8:-0}" -gt 0 ]; then
     CMD_SUFFIX="${CMD_SUFFIX} --disable_fp8"

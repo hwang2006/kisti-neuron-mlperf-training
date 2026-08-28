@@ -252,7 +252,7 @@ simply because the GPU generation differs.
 
 ---
 
-## 9. Preliminary Validation with the Last 256 C4 Shards
+## 9. Full-Dataset Default and Optional Last-256-Shard Validation
 
 The KISTI runtime supports:
 
@@ -260,7 +260,7 @@ The KISTI runtime supports:
 --use_last_256_shards
 ```
 
-This is used for preliminary validation before a full-dataset benchmark run.
+The current benchmark configurations default to the full preprocessed C4 dataset. This option remains available for preliminary validation and debugging.
 
 In the consolidated KISTI preprocessing layout, the final 256 raw shards map to:
 
@@ -403,16 +403,15 @@ The following remain based on the official MLCommons reference workload:
 
 ---
 
-## 16. Preliminary Validation vs Full Benchmark
+## 16. Full Benchmark vs Preliminary Validation
 
-The current preliminary reproduction path uses:
+The optional reduced-data validation path uses:
 
 ```text
 --use_last_256_shards
 ```
 
-A full-dataset run should disable the preliminary last-256-shard selection and
-be validated separately.
+The normal benchmark path uses the full preprocessed C4 dataset (`en_0` through `en_7`); the last-256-shard mode is retained only for validation and debugging.
 
 ---
 
@@ -453,7 +452,7 @@ and MLCommons review process.
 
 - `--use_last_256_shards`
 - explicit use of consolidated `en_6` and `en_7`
-- intended for end-to-end validation before a full-dataset benchmark run
+- retained as an optional end-to-end validation and debugging mode
 
 The guiding principle is to keep the official workload as intact as possible
 while making every KISTI-specific change explicit, traceable, and reproducible.

@@ -112,8 +112,8 @@ c4-train.en_6
 c4-train.en_7
 ```
 
-This was used as a preliminary end-to-end reproduction and validation mode
-before a full-dataset benchmark run.
+This was used historically as a preliminary end-to-end reproduction and
+validation mode before the full-dataset benchmark configuration became the default.
 
 Therefore the historical result is a preliminary/reproduction result and is
 not presented as an official full-dataset MLPerf submission.
@@ -129,7 +129,7 @@ The A100 and H200 paths intentionally share:
 - the same preprocessed C4 dataset
 - the same tokenizer
 - the same Singularity-based KISTI execution environment
-- the same preliminary last-256-shard validation concept
+- the same full-dataset default, with optional last-256-shard validation mode
 
 Hardware-specific configuration and runtime controls are kept in separate
 files so that results and future changes remain traceable.
