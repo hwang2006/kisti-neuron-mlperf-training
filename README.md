@@ -1,11 +1,18 @@
 # KISTI NEURON MLPerf Training Reproduction — Llama 3.1 8B on NVIDIA GPUs
 
 This repository provides a reproducible workflow for running the
-**MLPerf Training Small LLM / Llama 3.1 8B benchmark** on the
-KISTI NEURON GPU cluster using NVIDIA A100 and H200 GPUs.
+**MLPerf Training Small LLM / Llama 3.1 8B workload** on the
+KISTI NEURON GPU cluster using NVIDIA GPUs.
+
+The current repository documents reproduced configurations on:
+
+- NVIDIA H200
+- NVIDIA A100
 
 The workflow is based on the official MLCommons Training repository and adds
-KISTI NEURON-specific configuration, runtime fixes, and launch scripts.
+KISTI NEURON-specific configuration, Singularity-based execution, runtime
+compatibility fixes, hardware-specific launch scripts, and reproducibility
+metadata.
 
 > **Important**
 >
@@ -22,15 +29,21 @@ KISTI NEURON-specific configuration, runtime fixes, and launch scripts.
 
 ## Supported Reproduction Configurations
 
-| GPU | GPUs | TP | DP | Status |
-|---|---:|---:|---:|---|
-| NVIDIA H200 | 2 | 1 | 2 | reproduced |
-| NVIDIA H200 | 2 | 2 | 1 | reproduced |
-| NVIDIA A100 | 8 | 4 | 2 | reproduced |
+| GPU | GPUs | TP | DP | GBS | MBS | Status |
+|---|---:|---:|---:|---:|---:|---|
+| NVIDIA H200 | 2 | 1 | 2 | 32 | 1 | reproduced |
+| NVIDIA H200 | 2 | 2 | 1 | 32 | 1 | reproduced |
+| NVIDIA A100 | 8 | 4 | 2 | 32 | 1 | reproduced |
 
-The same preprocessed C4 dataset and Llama 3.1 tokenizer are reused across
-the H200 and A100 experiments. Experiment-specific NPY/index caches are kept
-separate.
+The H200 and A100 experiments reuse the same preprocessed C4 dataset and
+the same Llama 3.1 tokenizer.
+
+Experiment-specific NPY/index caches are stored separately.
+
+Additional GPU counts and accelerator generations can be added using the same
+repository structure.
+
+---
 
 ## Relationship to the Official MLCommons Repository
 
@@ -40,31 +53,44 @@ layer around the official MLCommons Training Small LLM reference implementation.
 The main KISTI adaptations include:
 
 - Docker-to-Singularity conversion for KISTI NEURON
-- NVIDIA H200 TP1/DP2 and TP2/DP1 configurations
-- NVIDIA A100 8-GPU TP4/DP2 configuration
+- hardware-specific H200 and A100 configurations
 - KISTI launch and reproducibility automation
 - Python runtime compatibility fixes
+- A100-specific FP8 control
 - preliminary validation using the last 256 C4 shards before a full-dataset run
 
-For a detailed description of what was changed, why it was changed, and how
-the KISTI workflow relates to the official reference, see:
+For a detailed description of the KISTI changes and their relationship to the
+upstream implementation, see:
 
 [Differences from the Official MLCommons Training Repository](docs/differences-from-upstream.md)
 
-Exact source-level differences are recorded in:
+A100-specific notes are documented in:
+
+[NVIDIA A100 Reproduction Notes](docs/a100-notes.md)
+
+Exact H200 source-level differences are recorded in:
 
 - `reproducibility/pretrain_llama31_kisti.diff`
 - `reproducibility/run_llama31_kisti.diff`
 
 ---
 
-## 1. Repository Structure
+## 1. Repository and Working Directory Structure
 
 The recommended working directory is:
 
 ```text
 $MLPERF_ROOT/
-├── kisti-neuron-mlperf-llama31-training/
+├── kisti-neuron-mlperf-training/
+│   ├── configs/
+│   │   ├── h200/
+│   │   └── a100/
+│   ├── scripts/
+│   ├── patches/
+│   ├── docs/
+│   ├── results/
+│   ├── containers/
+│   └── reproducibility/
 ├── training/
 │   └── small_llm_pretraining/
 │       └── nemo/
@@ -72,28 +98,33 @@ $MLPERF_ROOT/
 │   └── mlperf-llama31-h200.sif
 ├── data/
 │   ├── C4_processed/
-│   └── npy_indices_h200_tp1/
+│   └── npy_indices/
+│       ├── h200_2gpu_tp1_dp2/
+│       ├── h200_2gpu_tp2_dp1/
+│       └── a100_8gpu_tp4_dp2/
 ├── models/
 │   └── Llama-3.1-8B/
 ├── checkpoints/
-│   └── continual/
 └── logs/
-    ├── mlperf-h200-tp1/
-    └── mlperf-h200-tp2/
 ```
 
-The KISTI repository contains the NEURON-specific scripts and configuration.
+The KISTI repository contains the NEURON-specific scripts, configurations,
+patches, documentation, and result summaries.
+
 The official MLCommons source is cloned separately under:
 
 ```text
 $MLPERF_ROOT/training
 ```
 
+Large data, container images, checkpoints, and benchmark logs should remain
+outside the Git repository.
+
 ---
 
 ## 2. Create the Working Directory
 
-Use a dedicated directory for this benchmark.
+Use a dedicated directory:
 
 ```bash
 export MLPERF_ROOT=/scratch/$USER/mlperf-training-llama31
@@ -105,10 +136,10 @@ Clone this repository:
 
 ```bash
 git clone \
-    https://github.com/hwang2006/kisti-neuron-mlperf-llama31-training.git \
-    "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
+    https://github.com/hwang2006/kisti-neuron-mlperf-training.git \
+    "$MLPERF_ROOT/kisti-neuron-mlperf-training"
 
-cd "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
+cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
 ```
 
 Prepare the directory structure:
@@ -139,7 +170,7 @@ Prepare the pinned source:
 ./scripts/02_prepare_mlcommons_source.sh
 ```
 
-The MLPerf Small LLM workload should then be available at:
+The Small LLM workload should then be available at:
 
 ```text
 $MLPERF_ROOT/training/small_llm_pretraining/nemo
@@ -152,24 +183,30 @@ ls -lh \
     "$MLPERF_ROOT/training/small_llm_pretraining/nemo"
 ```
 
-The KISTI-specific runtime files should include:
+The KISTI runtime files include the H200 path:
 
 ```text
 pretrain_llama31_kisti.py
 run_llama31_kisti.sh
 ```
 
+and the A100 path:
+
+```text
+pretrain_llama31_a100.py
+run_llama31_a100.sh
+```
+
 ---
 
 ## 4. Build the Singularity Container
 
-The benchmark uses a Singularity image based on the NVIDIA PyTorch container
-required by the MLPerf Small LLM workload.
+KISTI NEURON compute nodes use Singularity rather than Docker.
 
 Build the image:
 
 ```bash
-cd "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
+cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
 
 singularity build --fakeroot \
     "$MLPERF_ROOT/containers/mlperf-llama31-h200.sif" \
@@ -182,14 +219,14 @@ The resulting image should be:
 $MLPERF_ROOT/containers/mlperf-llama31-h200.sif
 ```
 
-Verify the image:
+Verify:
 
 ```bash
 ls -lh \
     "$MLPERF_ROOT/containers/mlperf-llama31-h200.sif"
 ```
 
-Verify the major software versions:
+Verify major software versions:
 
 ```bash
 singularity exec --nv \
@@ -215,8 +252,8 @@ Megatron-Core       0.11.0rc0
 Transformer Engine  1.14
 ```
 
-The host NVIDIA driver may report support for a newer CUDA version. This is
-normal because the container carries its own CUDA userspace libraries.
+The host driver may report support for a newer CUDA version. This is normal
+because the container carries its own CUDA userspace libraries.
 
 ---
 
@@ -224,37 +261,37 @@ normal because the container carries its own CUDA userspace libraries.
 
 ### Option A — Download the Preprocessed Dataset
 
-For a new installation, use:
+For a new installation:
 
 ```bash
-cd "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
+cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
 
 ./scripts/03_download_preprocessed_data.sh
 ```
 
-This prepares the preprocessed C4 dataset under:
+This prepares:
 
 ```text
 $MLPERF_ROOT/data/C4_processed
 ```
 
-and the Llama 3.1 tokenizer under:
+and:
 
 ```text
 $MLPERF_ROOT/models/Llama-3.1-8B
 ```
 
-The preprocessed C4 dataset is very large and may require several hundred GB
-of storage.
+The preprocessed C4 dataset is large and may require several hundred GB of
+storage.
 
 ---
 
 ### Option B — Reuse an Existing Validated Dataset
 
-If a validated preprocessed C4 dataset and tokenizer already exist on the
-system, symbolic links can be used instead of downloading them again.
+If a validated preprocessed C4 dataset and tokenizer already exist, symbolic
+links can be used instead of downloading and preprocessing them again.
 
-For example:
+Example:
 
 ```bash
 rmdir "$MLPERF_ROOT/data/C4_processed"
@@ -267,82 +304,95 @@ ln -s /path/to/existing/Llama-3.1-8B \
     "$MLPERF_ROOT/models/Llama-3.1-8B"
 ```
 
-Verify the links:
+Verify:
 
 ```bash
 readlink -f "$MLPERF_ROOT/data/C4_processed"
 readlink -f "$MLPERF_ROOT/models/Llama-3.1-8B"
 ```
 
+The same preprocessed dataset and tokenizer can be reused across H200 and A100
+runs when the workload, tokenizer, and preprocessing format are unchanged.
+
 ---
 
-## 6. Python Compatibility Fix
+## 6. NPY / Dataset Index Cache
 
-The NVIDIA PyTorch container used by this benchmark includes a `pangu`
-package whose API is incompatible with the NeMo version used by this MLPerf
-workload.
+The preprocessed C4 dataset contains the tokenized data and indexed-dataset
+metadata.
 
-Without the compatibility fix, NeMo may fail during startup with an error such
-as:
+At training startup, Megatron/NeMo may also generate NumPy-based document,
+sample, and shuffle indices used to map the preprocessed dataset into training
+samples.
+
+These caches are not a second copy of the C4 preprocessing output.
+
+Conceptually:
+
+```text
+Raw C4
+  |
+  v
+preprocessing
+  |
+  v
+C4_processed
+  |-- *.bin
+  `-- *.idx
+        |
+        v
+Megatron/NeMo dataset builder
+        |
+        v
+NPY sample/document/shuffle indices
+```
+
+The cache directories are separated by experiment to avoid mixing runtime
+indices from different configurations.
+
+Examples:
+
+```text
+$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp1_dp2
+$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp2_dp1
+$MLPERF_ROOT/data/npy_indices/a100_8gpu_tp4_dp2
+```
+
+The GPU generation itself is not the fundamental reason for separate caches;
+the separation is primarily for reproducibility and experiment isolation.
+
+---
+
+## 7. Python Compatibility Fix
+
+The NVIDIA PyTorch container used by this workload includes a `pangu` package
+whose API can be incompatible with the NeMo version used by the benchmark.
+
+Without the compatibility fix, startup may fail with:
 
 ```text
 ImportError: cannot import name 'spacing' from 'pangu'
 ```
 
-This repository provides a compatible implementation at:
+This repository provides:
 
 ```text
 patches/pythonfix/pangu.py
 ```
 
-The H200 launcher automatically prepends this directory to `PYTHONPATH`:
+The KISTI launchers prepend this directory to `PYTHONPATH`.
 
-```text
-$REPO_ROOT/patches/pythonfix
-```
-
-where `REPO_ROOT` is the root directory of this Git repository.
-
-No manual installation or copying of `pangu.py` is required.
-
-The launcher verifies that the compatibility file exists before starting the
-benchmark.
-
-You can test the compatibility fix manually:
-
-```bash
-export REPO="$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
-
-singularity exec --nv \
-    -B /scratch:/scratch \
-    "$MLPERF_ROOT/containers/mlperf-llama31-h200.sif" \
-    /bin/bash -lc "
-        export PYTHONPATH=$REPO/patches/pythonfix:\$PYTHONPATH
-
-        python3 - <<'PY'
-import pangu
-
-print("pangu file:", pangu.__file__)
-print("has spacing:", hasattr(pangu, "spacing"))
-print("spacing test:", pangu.spacing("Hello世界"))
-PY
-    "
-```
-
-Expected output includes:
-
-```text
-has spacing: True
-spacing test: Hello 世界
-```
+No manual installation of `pangu.py` is required.
 
 ---
 
-## 7. Obtain Two NVIDIA H200 GPUs
+# H200 Reproduction
 
-Run the benchmark inside a Slurm allocation containing two NVIDIA H200 GPUs.
+## 8. Obtain Two NVIDIA H200 GPUs
 
-After entering the allocated compute node, verify the hostname:
+Run the H200 reproduction inside a Slurm allocation containing two H200 GPUs.
+
+After entering the allocated compute node:
 
 ```bash
 hostname
@@ -355,28 +405,296 @@ nvidia-smi --query-gpu=index,name,memory.total,driver_version \
     --format=csv,noheader
 ```
 
-The expected configuration is similar to:
+Expected configuration:
 
 ```text
-0, NVIDIA H200, 143771 MiB, <driver-version>
-1, NVIDIA H200, 143771 MiB, <driver-version>
+0, NVIDIA H200, ...
+1, NVIDIA H200, ...
 ```
 
-Before launching a benchmark, both GPUs should ideally be idle.
+Before launching, both GPUs should ideally be idle.
 
-Check:
+---
+
+## 9. H200 TP1 / DP2 Configuration
+
+Configuration:
+
+```text
+GPUs               : 2
+Tensor Parallelism : 1
+Data Parallelism   : 2
+Micro Batch Size   : 1
+Global Batch Size  : 32
+```
+
+Config file:
+
+```text
+configs/h200/h200_2gpu_tp1_dp2.sh
+```
+
+Run:
 
 ```bash
-nvidia-smi \
-    --query-gpu=index,memory.used,memory.free,utilization.gpu \
-    --format=csv,noheader
+cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
+
+./scripts/run_h200_tp1.sh
+```
+
+The wrapper invokes:
+
+```text
+run_h200_tp1.sh
+    |
+    +-- run_h200.sh tp1
+            |
+            +-- configs/h200/h200_2gpu_tp1_dp2.sh
+            |
+            +-- Singularity container
+            |
+            +-- run_llama31_kisti.sh
+            |
+            +-- pretrain_llama31_kisti.py
 ```
 
 ---
 
-## 8. Verify the Benchmark Inputs
+## 10. H200 TP2 / DP1 Configuration
 
-Before launching the benchmark, verify the container:
+After TP1/DP2 completes, the TP2/DP1 configuration can be used for comparison.
+
+Configuration:
+
+```text
+GPUs               : 2
+Tensor Parallelism : 2
+Data Parallelism   : 1
+Micro Batch Size   : 1
+Global Batch Size  : 32
+```
+
+Config file:
+
+```text
+configs/h200/h200_2gpu_tp2_dp1.sh
+```
+
+Run:
+
+```bash
+cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
+
+./scripts/run_h200_tp2.sh
+```
+
+---
+
+## 11. Monitor H200 Runs
+
+Check the training processes:
+
+```bash
+ps -ef | grep -E \
+    'pretrain_llama31|run_llama31|torchrun|nemo' \
+    | grep -v grep
+```
+
+Check GPU utilization:
+
+```bash
+nvidia-smi \
+    --query-gpu=index,name,memory.used,memory.free,utilization.gpu \
+    --format=csv,noheader
+```
+
+Locate recent NeMo combined logs:
+
+```bash
+find ~/.nemo_run/experiments \
+    -type f \
+    -name combined.log \
+    -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' \
+    | sort
+```
+
+Inspect the most recent training line:
+
+```bash
+grep 'Training epoch' <combined.log> | tail -1
+```
+
+Inspect validation and completion events:
+
+```bash
+grep -E \
+    '"key": "eval_accuracy"|"key": "run_stop"' \
+    <combined.log> \
+    | tail -30
+```
+
+---
+
+# A100 Reproduction
+
+## 12. A100 8-GPU TP4 / DP2 Configuration
+
+The reproduced A100 configuration uses:
+
+```text
+GPUs               : 8
+Tensor Parallelism : 4
+Data Parallelism   : 2
+Micro Batch Size   : 1
+Global Batch Size  : 32
+```
+
+Config file:
+
+```text
+configs/a100/a100_8gpu_tp4_dp2.sh
+```
+
+Important A100-specific settings:
+
+```bash
+export DISABLE_FP8=1
+export ENABLE_RECOMPUTE=0
+export DISABLE_CE_FUSION=0
+```
+
+`DISABLE_FP8=1` selects the A100-compatible BF16 path instead of the FP8
+configuration used by the H200-oriented reference path.
+
+The final reproduced TP4/DP2 configuration keeps cross-entropy fusion enabled.
+
+Historical debugging code also provides optional controls for activation
+recomputation and disabling cross-entropy fusion, but these are not enabled in
+the final A100 TP4/DP2 reproduction.
+
+---
+
+## 13. Run the A100 Reproduction
+
+Obtain an allocation with eight NVIDIA A100 GPUs and verify:
+
+```bash
+nvidia-smi --query-gpu=index,name,memory.total,driver_version \
+    --format=csv,noheader
+```
+
+Then:
+
+```bash
+export MLPERF_ROOT=/scratch/$USER/mlperf-training-llama31
+
+cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
+
+./scripts/run_a100_tp4_dp2.sh
+```
+
+The wrapper uses:
+
+```text
+run_a100_tp4_dp2.sh
+    |
+    +-- run_a100.sh tp4_dp2
+            |
+            +-- configs/a100/a100_8gpu_tp4_dp2.sh
+            |
+            +-- Singularity container
+            |
+            +-- run_llama31_a100.sh
+            |
+            +-- pretrain_llama31_a100.py
+```
+
+A100-specific notes are available in:
+
+```text
+docs/a100-notes.md
+```
+
+---
+
+## 14. Historical A100 Result
+
+The historical KISTI A100 reproduction produced:
+
+| Item | Value |
+|---|---:|
+| GPUs | 8 x NVIDIA A100 |
+| TP | 4 |
+| DP | 2 |
+| GBS | 32 |
+| MBS | 1 |
+| Seed | 12875 |
+| Final evaluation value | 3.2832148075 |
+| Samples at final evaluation | 233440 |
+| Train samples at run stop | 233472 |
+| Status | success |
+
+This result is included as a reproducibility reference and is not presented as
+an official MLPerf submission.
+
+See:
+
+```text
+results/a100/8gpu_tp4_dp2/README.md
+```
+
+---
+
+## 15. Dataset Selection and Preliminary Validation
+
+The current KISTI reproduction path uses:
+
+```text
+--use_last_256_shards
+```
+
+for **preliminary validation before a full-dataset benchmark run**.
+
+This option was introduced to verify that the complete workflow executes
+correctly before committing substantial resources to a full-dataset run.
+
+The consolidated C4 shards are organized approximately as:
+
+```text
+c4-train.en_0  <- raw shards   0-127
+c4-train.en_1  <- raw shards 128-255
+c4-train.en_2  <- raw shards 256-383
+c4-train.en_3  <- raw shards 384-511
+c4-train.en_4  <- raw shards 512-639
+c4-train.en_5  <- raw shards 640-767
+c4-train.en_6  <- raw shards 768-895
+c4-train.en_7  <- raw shards 896-1023
+```
+
+The preliminary mode uses:
+
+```text
+c4-train.en_6
+c4-train.en_7
+```
+
+and the validation subset:
+
+```text
+c4-validation-91205-samples.en
+```
+
+This shard selection should not be interpreted as redefining the official
+MLPerf Training dataset.
+
+A future full-dataset run should remove or otherwise disable the preliminary
+last-256-shard selection and be validated separately.
+
+---
+
+## 16. Verify Benchmark Inputs
+
+Verify the container:
 
 ```bash
 ls -lh \
@@ -390,13 +708,7 @@ du -shL \
     "$MLPERF_ROOT/data/C4_processed"
 ```
 
-The `-L` option follows symbolic links if the dataset is reused from another
-location.
-
-NeMo/Megatron preprocessing generates files using the
-`_text_document.bin` and `_text_document.idx` suffixes.
-
-Verify the required training shards:
+Verify the training shards used by preliminary validation:
 
 ```bash
 ls -lh \
@@ -422,263 +734,11 @@ ls -lh \
     "$MLPERF_ROOT/models/Llama-3.1-8B/tokenizer_config.json"
 ```
 
-Verify the KISTI runtime files and Python compatibility fix:
-
-```bash
-ls -lh \
-    "$MLPERF_ROOT/training/small_llm_pretraining/nemo/pretrain_llama31_kisti.py" \
-    "$MLPERF_ROOT/training/small_llm_pretraining/nemo/run_llama31_kisti.sh" \
-    "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training/patches/pythonfix/pangu.py"
-```
-
-Verify that two H200 GPUs are visible:
-
-```bash
-nvidia-smi --query-gpu=index,name,memory.total,driver_version \
-    --format=csv,noheader
-```
-
-The expected configuration is two visible NVIDIA H200 GPUs.
-
 ---
 
-## 9. TP1 / DP2 Configuration
+## 17. Result Validation
 
-The first benchmark configuration uses:
-
-```text
-Tensor Parallelism : TP = 1
-Data Parallelism   : DP = 2
-GPUs               : 2
-Micro Batch Size   : 1
-Global Batch Size  : 32
-```
-
-The configuration file is:
-
-```text
-configs/h200/h200_2gpu_tp1_dp2.sh
-```
-
-Important settings include:
-
-```bash
-export GBS=32
-export MBS=1
-export MAX_STEPS=1200000
-export WARMUP_STEPS=512
-export MAX_LR="5e-4"
-export EVAL_EVERY=12288
-export SAVE_CKPT=0
-export USE_CKPT=0
-```
-
-Inspect the configuration before running:
-
-```bash
-grep -E \
-    '^(export )?(TP|GBS|MBS|MAX_LR|MAX_STEPS|WARMUP_STEPS|EVAL_EVERY|SAVE_CKPT|USE_CKPT)=' \
-    configs/h200/h200_2gpu_tp1_dp2.sh
-```
-
----
-
-## 10. Run TP1 / DP2
-
-Start the benchmark:
-
-```bash
-cd "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
-
-./scripts/run_h200_tp1.sh
-```
-
-The wrapper invokes:
-
-```text
-run_h200_tp1.sh
-    |
-    +-- run_h200.sh tp1
-            |
-            +-- configs/h200/h200_2gpu_tp1_dp2.sh
-            |
-            +-- Singularity container
-            |
-            +-- run_llama31_kisti.sh
-            |
-            +-- pretrain_llama31_kisti.py
-```
-
-The launcher uses `nohup` and starts the benchmark in the background.
-
-Typical output is:
-
-```text
-===== MLPerf Training Launch =====
-Mode             : tp1
-MLPERF_ROOT      : ...
-Training source  : ...
-Container        : ...
-TP               : 1
-GPUs             : 2
-MBS / GBS        : 1 / 32
-Job directory    : ...
-Launcher log     : ...
-PID=<pid>
-LOG=<log-file>
-```
-
-The shell can therefore return immediately while the training process
-continues in the background.
-
-> `nohup` protects the process from an SSH/session disconnect, but it does not
-> extend the Slurm allocation. The Slurm job must remain active for the entire
-> benchmark.
-
----
-
-## 11. Monitor the TP1 Run
-
-Check the launcher process:
-
-```bash
-ps -ef | grep -E \
-    'pretrain_llama31|run_llama31|torchrun|nemo' \
-    | grep -v grep
-```
-
-Check GPU utilization:
-
-```bash
-nvidia-smi
-```
-
-or:
-
-```bash
-nvidia-smi \
-    --query-gpu=index,memory.used,memory.free,utilization.gpu \
-    --format=csv,noheader
-```
-
-List launcher logs:
-
-```bash
-find "$MLPERF_ROOT/logs/mlperf-h200-tp1" \
-    -maxdepth 1 \
-    -type f \
-    -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' \
-    | sort
-```
-
-Inspect the latest launcher log:
-
-```bash
-tail -n 100 \
-    "$MLPERF_ROOT/logs/mlperf-h200-tp1/launcher_<timestamp>.log"
-```
-
-Follow it interactively:
-
-```bash
-tail -f \
-    "$MLPERF_ROOT/logs/mlperf-h200-tp1/launcher_<timestamp>.log"
-```
-
-Pressing `Ctrl-C` stops only `tail -f`; it does not stop the background
-training process.
-
-During initialization, verify that there are no errors such as:
-
-```text
-Traceback
-CUDA out of memory
-RuntimeError
-ImportError
-Killed
-```
-
----
-
-## 12. TP2 / DP1 Configuration
-
-After completing the TP1/DP2 measurement, the second configuration can be
-used for comparison.
-
-```text
-Tensor Parallelism : TP = 2
-Data Parallelism   : DP = 1
-GPUs               : 2
-Micro Batch Size   : 1
-Global Batch Size  : 32
-```
-
-The configuration file is:
-
-```text
-configs/h200/h200_2gpu_tp2_dp1.sh
-```
-
-Run:
-
-```bash
-cd "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
-
-./scripts/run_h200_tp2.sh
-```
-
-Logs are written under:
-
-```text
-$MLPERF_ROOT/logs/mlperf-h200-tp2
-```
-
----
-
-## 13. Dataset Selection
-
-The KISTI runtime uses:
-
-```text
---use_last_256_shards
-```
-
-for the benchmark training dataset.
-
-The consolidated preprocessed C4 shards are organized approximately as:
-
-```text
-c4-train.en_0  <- raw shards   0-127
-c4-train.en_1  <- raw shards 128-255
-c4-train.en_2  <- raw shards 256-383
-c4-train.en_3  <- raw shards 384-511
-c4-train.en_4  <- raw shards 512-639
-c4-train.en_5  <- raw shards 640-767
-c4-train.en_6  <- raw shards 768-895
-c4-train.en_7  <- raw shards 896-1023
-```
-
-The benchmark uses:
-
-```text
-c4-train.en_6
-c4-train.en_7
-```
-
-and the validation subset:
-
-```text
-c4-validation-91205-samples.en
-```
-
-The actual Megatron dataset files include the `_text_document` suffix.
-
----
-
-## 14. Result Validation
-
-The benchmark success criterion used by this workflow is based on the MLPerf
-Small LLM target validation value:
+The success criterion used by this workload is:
 
 ```text
 target_log_ppl <= 3.3
@@ -690,94 +750,47 @@ The MLPerf log may use the key:
 eval_accuracy
 ```
 
-for the reported validation metric even though the numerical value corresponds
-to the workload's validation log-perplexity/loss criterion.
+for the reported numerical validation value.
 
-A successful run should contain an MLPerf `run_stop` event with success status.
-
-Search the logs for important MLPerf events:
-
-```bash
-grep -E \
-    'run_start|eval_accuracy|run_stop' \
-    "$MLPERF_ROOT"/logs/mlperf-h200-tp1/* \
-    2>/dev/null
-```
-
-The same can be done for TP2:
-
-```bash
-grep -E \
-    'run_start|eval_accuracy|run_stop' \
-    "$MLPERF_ROOT"/logs/mlperf-h200-tp2/* \
-    2>/dev/null
-```
-
-Depending on NeMo Run, detailed combined logs may also be stored under:
+A successful run should contain an MLPerf `run_stop` event with:
 
 ```text
-~/.nemo_run/experiments/
+status: success
 ```
 
-Recent combined logs can be located with:
+Search a detailed combined log with:
 
 ```bash
-find ~/.nemo_run/experiments \
-    -type f \
-    -name combined.log \
-    -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' \
-    | sort
+grep -E \
+    '"key": "eval_accuracy"|"key": "run_stop"' \
+    <combined.log>
 ```
 
 ---
 
-## 15. Troubleshooting
+## 18. Troubleshooting
 
 ### `ImportError: cannot import name 'spacing' from 'pangu'`
 
-Example:
-
-```text
-ImportError: cannot import name 'spacing' from 'pangu'
-```
-
-Confirm that the repository compatibility file exists:
+Verify:
 
 ```bash
 ls -lh \
-    "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training/patches/pythonfix/pangu.py"
+    "$MLPERF_ROOT/kisti-neuron-mlperf-training/patches/pythonfix/pangu.py"
 ```
 
-Confirm that the launcher uses it:
-
-```bash
-grep -nE \
-    'PYTHONFIX|PYTHONPATH|pangu' \
-    "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training/scripts/run_h200.sh"
-```
-
-The launcher should prepend:
-
-```text
-$REPO_ROOT/patches/pythonfix
-```
-
-to `PYTHONPATH`.
+The launcher should prepend the compatibility directory to `PYTHONPATH`.
 
 ---
 
 ### `du -sh C4_processed` reports `0`
 
-If `C4_processed` is a symbolic link, this is expected.
-
-Use:
+If `C4_processed` is a symbolic link, use:
 
 ```bash
 du -shL \
     "$MLPERF_ROOT/data/C4_processed"
 ```
-
-to follow the symbolic link.
 
 ---
 
@@ -797,34 +810,13 @@ c4-train.en_6_text_document.bin
 c4-train.en_6_text_document.idx
 ```
 
-Likewise, the validation files are:
-
-```text
-c4-validation-91205-samples.en_text_document.bin
-c4-validation-91205-samples.en_text_document.idx
-```
+Validation files similarly use the `_text_document` suffix.
 
 ---
 
 ### Launcher starts but immediately exits
 
-First identify the launcher log:
-
-```bash
-find "$MLPERF_ROOT/logs" \
-    -type f \
-    -name 'launcher_*.log' \
-    -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' \
-    | sort
-```
-
-Then inspect it:
-
-```bash
-tail -n 200 <launcher-log>
-```
-
-Also verify:
+Inspect the launcher log and check:
 
 ```bash
 nvidia-smi
@@ -838,11 +830,21 @@ ps -ef | grep -E \
     | grep -v grep
 ```
 
+Also search logs for:
+
+```text
+Traceback
+CUDA out of memory
+RuntimeError
+ImportError
+Killed
+```
+
 ---
 
-## 16. Reproducibility Notes
+## 19. Reproducibility Notes
 
-For reproducibility, this workflow pins the MLCommons Training source to:
+The MLCommons Training source is pinned to:
 
 ```text
 aa344c7fb900e82ed19fb94aebfed50c63ab2204
@@ -854,79 +856,82 @@ The following large artifacts should not be committed to Git:
 C4 dataset
 preprocessed C4 data
 Singularity SIF images
-Llama model weights
+model weights
 checkpoints
-generated index files
+generated NPY/index files
 large benchmark logs
 ```
 
-The repository should contain only the scripts, configurations, patches,
-documentation, provenance information, and small reproducibility metadata
-required to reconstruct the environment.
+The repository should contain only scripts, configurations, patches,
+documentation, provenance information, small result summaries, and other
+metadata required to reconstruct the environment.
 
 ---
 
-## 17. Quick Start Summary
+## 20. Quick Start
+
+### Common preparation
 
 ```bash
-# 1. Working directory
 export MLPERF_ROOT=/scratch/$USER/mlperf-training-llama31
+
 mkdir -p "$MLPERF_ROOT"
 
-# 2. Clone KISTI reproduction repository
 git clone \
-    https://github.com/hwang2006/kisti-neuron-mlperf-llama31-training.git \
-    "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
+    https://github.com/hwang2006/kisti-neuron-mlperf-training.git \
+    "$MLPERF_ROOT/kisti-neuron-mlperf-training"
 
-cd "$MLPERF_ROOT/kisti-neuron-mlperf-llama31-training"
+cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
 
-# 3. Prepare directories
 ./scripts/01_prepare_directories.sh
-
-# 4. Prepare pinned MLCommons source
 ./scripts/02_prepare_mlcommons_source.sh
-
-# 5. Prepare dataset/tokenizer
 ./scripts/03_download_preprocessed_data.sh
 
-# 6. Build container
 singularity build --fakeroot \
     "$MLPERF_ROOT/containers/mlperf-llama31-h200.sif" \
     containers/mlperf-h200.def
+```
 
-# 7. Verify GPUs
-nvidia-smi --query-gpu=index,name,memory.total,driver_version \
-    --format=csv,noheader
+### H200 — 2 GPUs, TP1 / DP2
 
-# 8. Run TP1 / DP2
+```bash
 ./scripts/run_h200_tp1.sh
+```
 
-# 9. After TP1 completes, run TP2 / DP1
+### H200 — 2 GPUs, TP2 / DP1
+
+```bash
 ./scripts/run_h200_tp2.sh
+```
+
+### A100 — 8 GPUs, TP4 / DP2
+
+```bash
+./scripts/run_a100_tp4_dp2.sh
 ```
 
 ---
 
 ## References
 
-- MLCommons Training  
+- MLCommons Training
   https://github.com/mlcommons/training
 
-- MLPerf  
+- MLPerf Training
   https://mlcommons.org/benchmarks/training/
 
-- NVIDIA NeMo  
+- NVIDIA NeMo
   https://github.com/NVIDIA/NeMo
 
-- KISTI National Supercomputing Center  
+- KISTI National Supercomputing Center
   https://www.ksc.re.kr/
 
 ---
 
 ## License
 
-This repository contains KISTI-specific scripts, configuration, documentation,
-and patches for reproducing the experiment.
+This repository contains KISTI-specific scripts, configurations,
+documentation, patches, and reproducibility metadata.
 
 The upstream MLCommons, NVIDIA NeMo, PyTorch, and other third-party components
 remain subject to their respective licenses.
