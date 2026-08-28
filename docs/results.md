@@ -1,9 +1,9 @@
-# H200 Benchmark Results
+# MLPerf Training Reproduction Results
 
-## Configuration
+## Common Notes
 
-The successful experiments used a single KISTI NEURON node with two
-NVIDIA H200 GPUs.
+These results are local KISTI NEURON reproduction and performance-engineering
+measurements based on the MLCommons Training Small LLM / Llama 3.1 8B workload.
 
 Common parameters:
 
@@ -16,99 +16,199 @@ Common parameters:
 - Target validation log perplexity: 3.3
 - Checkpoint saving: disabled
 
-## TP1 / DP2
+The runs documented here use the preliminary `--use_last_256_shards` mode.
+They are reproduction results, not official full-dataset MLPerf submissions.
+
+---
+
+## H200 Results
+
+### Current Clean TP1 / DP2 Rerun
 
 Configuration:
 
-    tensor parallelism = 1
-    data parallelism   = 2
-    micro batch size   = 1
-    global batch size  = 32
+```text
+GPUs = 2 x NVIDIA H200
+TP   = 1
+DP   = 2
+MBS  = 1
+GBS  = 32
+Seed = 25646
+```
 
 MLPerf events:
 
-    run_start = 1786896330437 ms
+```text
+run_start = 1787844598029 ms
+```
 
 Final successful evaluation:
 
-    eval_accuracy = 3.2801718711853027
-    samples_count = 208864
+```text
+eval_accuracy = 3.289571523666382
+samples_count = 208864
+```
 
-    run_stop = 1786954944652 ms
-    status   = success
+Run stop:
+
+```text
+run_stop = 1787902805703 ms
+status   = success
+```
 
 Elapsed time:
 
-    58614.215 seconds
-    16 h 16 m 54.215 s
+```text
+58207.674 seconds
+16 h 10 m 7.674 s
+```
 
-## TP2 / DP1
+A compact result record is stored in:
 
-Configuration:
+```text
+results/h200/2gpu_tp1_dp2/README.md
+```
 
-    tensor parallelism = 2
-    data parallelism   = 1
-    micro batch size   = 1
-    global batch size  = 32
+---
 
-MLPerf events:
-
-    run_start = 1786965611445 ms
+### Historical TP1 / DP2 Reference
 
 Final successful evaluation:
 
-    eval_accuracy = 3.2964823246002197
-    samples_count = 208864
-
-    run_stop = 1787024036652 ms
-    status   = success
+```text
+eval_accuracy = 3.2801718711853027
+samples_count = 208864
+```
 
 Elapsed time:
 
-    58425.207 seconds
-    16 h 13 m 45.207 s
+```text
+58614.215 seconds
+16 h 16 m 54.215 s
+```
 
-## Comparison
+---
+
+### Historical TP2 / DP1 Reference
+
+Final successful evaluation:
+
+```text
+eval_accuracy = 3.2964823246002197
+samples_count = 208864
+```
+
+Elapsed time:
+
+```text
+58425.207 seconds
+16 h 13 m 45.207 s
+```
+
+---
+
+### H200 Comparison
 
 | Run | Final validation log-ppl | Samples to target | Time |
-| --- | ---: | ---: | ---: |
-| TP1 / DP2 | 3.2801718712 | 208864 | 16:16:54.215 |
-| TP2 / DP1 | 3.2964823246 | 208864 | 16:13:45.207 |
+|---|---:|---:|---:|
+| Current TP1 / DP2, seed 25646 | 3.2895715237 | 208864 | 16:10:07.674 |
+| Historical TP1 / DP2 | 3.2801718712 | 208864 | 16:16:54.215 |
+| Historical TP2 / DP1 | 3.2964823246 | 208864 | 16:13:45.207 |
 
-Difference:
+The current clean TP1/DP2 rerun reached the target at the same sample count as
+the two historical H200 runs.
 
-    189.008 seconds
+Small differences between runs should be treated as observed single-run
+variation rather than proof that one parallelization strategy is inherently
+faster.
 
-TP2 was approximately:
+---
 
-    0.32%
+## A100 Results
 
-faster than TP1 in this particular pair of experiments.
+### Historical A100 8-GPU TP4 / DP2
 
-This difference is small and the runs used different random seeds.
-Therefore it should be treated as an observed single-run difference,
-not as proof that TP2 is inherently faster.
+Configuration:
 
-## Interpretation of eval_accuracy
+```text
+GPUs = 8 x NVIDIA A100
+TP   = 4
+DP   = 2
+MBS  = 1
+GBS  = 32
+Seed = 12875
+```
+
+Important runtime settings:
+
+```bash
+DISABLE_FP8=1
+ENABLE_RECOMPUTE=0
+DISABLE_CE_FUSION=0
+```
+
+Final successful evaluation:
+
+```text
+eval_accuracy = 3.2832148075
+samples_count = 233440
+train_samples = 233472
+status        = success
+```
+
+A compact result record is stored in:
+
+```text
+results/a100/8gpu_tp4_dp2/README.md
+```
+
+This historical A100 run also used `--use_last_256_shards`.
+
+---
+
+## Interpretation of `eval_accuracy`
 
 The MLPerf log key is named `eval_accuracy`, but for this workload the
-reported value represents the validation log-perplexity/loss quality
-metric.
+reported numerical value corresponds to the validation log-perplexity/loss
+quality metric.
 
 Lower values are better.
 
-The target is:
+The target used by this workflow is:
 
-    validation log perplexity <= 3.3
+```text
+target_log_ppl <= 3.3
+```
 
-Both runs satisfied the target.
+All successful runs listed above satisfied the target.
 
-## Submission status
+---
 
-These runs use MLPerf logging and the MLCommons workload implementation,
-but the repository does not claim that these results are official
-MLCommons submissions.
+## Dataset Scope
 
-Submission metadata, compliance procedures, and the official result
-packaging process would need to be completed separately for a formal
-MLPerf submission.
+The current KISTI reproduction workflow uses `--use_last_256_shards` for
+preliminary end-to-end validation.
+
+This selects the consolidated C4 datasets corresponding to the final 256 raw
+training shards:
+
+```text
+c4-train.en_6
+c4-train.en_7
+```
+
+This mode is used to validate the execution pipeline before a full-dataset
+benchmark run. It should not be interpreted as redefining the official MLPerf
+Training dataset.
+
+---
+
+## Submission Status
+
+These runs use MLPerf logging and the MLCommons workload implementation, but
+this repository does not claim that the results are official MLCommons
+submissions.
+
+A formal submission would additionally require compliance with the applicable
+MLPerf Training rules, system-description requirements, compliance procedures,
+result packaging, and MLCommons review.
