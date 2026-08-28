@@ -1,0 +1,85 @@
+--- pretrain_llama31.py	2026-08-11 14:10:33.000000000 +0900
++++ pretrain_llama31_kisti.py	2026-08-17 10:01:55.000000000 +0900
+@@ -202,20 +202,34 @@
+     tokenizer_path: Optional[str] = "",
+     seed: Optional[int] = 1234,
+     use_full_dataset: Optional[bool] = False,
++    use_last_256_shards: Optional[bool] = False,
+ ) -> run.Config:
+     tokenizer = run.Config(AutoTokenizer, pretrained_model_name=tokenizer_path)
+ 
+     print (f'tokenizer: {tokenizer}')
+     print (f'use_full_dataset: {use_full_dataset}')
++    print (f'use_last_256_shards: {use_last_256_shards}')
+ 
+     train_datasets = None
+ 
+-    dataset_path = dataset_path = os.getenv("PREPROCESSED_PATH")
++    dataset_path = os.getenv("PREPROCESSED_PATH")
+ 
+-    if use_full_dataset:
+-        train_datasets = sum([["12.5", f"{dataset_path}/c4-train.en_{idx}_text_document"] for idx in range(8)], [])
++    if use_last_256_shards:
++        # C4 raw shards 768-1023, represented by merged/preprocessed en_6 + en_7.
++        train_datasets = sum(
++            [["10", f"{dataset_path}/c4-train.en_{idx}_text_document"] for idx in [6, 7]],
++            [],
++        )
++    elif use_full_dataset:
++        train_datasets = sum(
++            [["12.5", f"{dataset_path}/c4-train.en_{idx}_text_document"] for idx in range(8)],
++            [],
++        )
+     else:
+-        train_datasets = sum([["10", f"{dataset_path}/c4-train.en_{idx}_text_document"] for idx in [6]], [])
++        train_datasets = sum(
++            [["10", f"{dataset_path}/c4-train.en_{idx}_text_document"] for idx in [6]],
++            [],
++        )
+ 
+     data_paths = {
+         "train": train_datasets,
+@@ -309,7 +323,8 @@
+     data_group.add_argument("--eval_tokens", type=int, default=1024, help="Evaluate using at least N evaluation sequences")
+     data_group.add_argument('--max_steps', type=int, default=1200000, help="Maximum number of steps that each experiment partition will train on. None means no restriction on max steps. ")
+     data_group.add_argument('--warmup_steps', type=int, default=None, help="Number of steps for LR warmup")
+-    data_group.add_argument("--use_full_dataset", action="store_true", help="If set, then we use the full dataset, instead of the last 256/1024 shards")
++    data_group.add_argument("--use_full_dataset", action="store_true", help="If set, then we use the full dataset")
++    data_group.add_argument("--use_last_256_shards", action="store_true", help="Use C4 shards 768-1023, represented by preprocessed en_6 and en_7")
+     data_group.add_argument("--tokenizer_path", type=str, help="Tokenizer path that's used to tokenize the dataset")
+ 
+     experiment_group = parser.add_argument_group("Experiment management arguments")
+@@ -363,6 +378,7 @@
+         tokenizer_path=args.tokenizer_path,
+         seed=1234, # overwritten in each experiments
+         use_full_dataset=args.use_full_dataset,
++        use_last_256_shards=args.use_last_256_shards,
+     )
+ 
+     eval_every_n_batches = math.ceil(args.eval_every / (args.gbs))
+@@ -513,6 +529,7 @@
+                 if args.save_ckpt:
+                     pretrain.log.ckpt.dirpath = experiment_write_to_path
+                     pretrain.log.ckpt.filename = "checkpoint"
++                    pretrain.log.ckpt.save_top_k = 1
+ 
+                 if static_max_steps is not None:
+                     start_step = experiment_max_steps
+@@ -536,7 +553,7 @@
+                     )
+ 
+                     if args.save_ckpt:
+-                        pretrain.log.ckpt.every_n_train_steps = experiment_max_steps
++                        pretrain.log.ckpt.every_n_train_steps = static_max_steps // 2
+                         pretrain.log.ckpt.save_on_train_epoch_end = False
+ 
+                     pretrain.log.extra_loggers = [
+@@ -550,7 +567,7 @@
+                         ),
+                     ]
+                     if args.save_ckpt:
+-                        pretrain.log.ckpt.every_n_train_steps = experiment_max_steps
++                        pretrain.log.ckpt.every_n_train_steps = static_max_steps // 2
+                         pretrain.log.ckpt.save_on_train_epoch_end = False
+                 experiment_read_from_path = experiment_write_to_path + "/checkpoint"
+ 

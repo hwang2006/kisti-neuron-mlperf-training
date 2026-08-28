@@ -1,0 +1,32 @@
+--- upstream/run_llama31.sh
++++ kisti/run_llama31_kisti.sh
+@@ -36,6 +36,7 @@
+ 
+ #     Model settings
+ : "${USE_CKPT:="0"}"
++: "${INITIAL_CKPT:=""}"
+ : "${FROM_HF:?FROM_HF not set}"
+ : "${CONTINUAL_CKPT:?CONTINUAL_CKPT not set}"
+ 
+@@ -81,6 +82,9 @@
+ 
+ if [ $USE_CKPT -gt 0 ]; then
+     CMD_SUFFIX="${CMD_SUFFIX} --use_ckpt"
++    if [ ! "$INITIAL_CKPT" = "" ]; then
++        CMD_SUFFIX="${CMD_SUFFIX} --initial_ckpt_path ${INITIAL_CKPT}"
++    fi
+     if [ $FROM_HF -gt 0 ]; then
+         CMD_SUFFIX="${CMD_SUFFIX} --resume_from_hf"
+     fi
+@@ -127,7 +131,10 @@
+ 
+ set -x
+ 
+-python3 pretrain_llama31.py \
++CMD_SUFFIX="${CMD_SUFFIX} --max_lr ${MAX_LR}"
++CMD_SUFFIX="${CMD_SUFFIX} --use_last_256_shards"
++
++python3 pretrain_llama31_kisti.py \
+ --user $USER --host $HOST \
+ --job_dir $JOB_DIR \
+ --account $ACCOUNT --partition $PARTITION \

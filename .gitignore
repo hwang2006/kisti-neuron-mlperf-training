@@ -1,0 +1,30 @@
+# Large datasets
+data/
+C4/
+C4_merged/
+C4_processed/
+*.bin
+*.idx
+*.json.gz
+
+# Models / checkpoints
+models/
+checkpoints/
+*.safetensors
+
+# Containers
+*.sif
+
+# Runtime data
+logs/
+outputs/
+npy_indices*/
+.nemo_run/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors
+.vscode/
+.idea/

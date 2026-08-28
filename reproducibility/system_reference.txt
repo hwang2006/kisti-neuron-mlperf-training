@@ -1,0 +1,53 @@
+KISTI NEURON H200 Reference Environment
+========================================
+
+Experiment date:
+2026-08
+
+Compute node:
+KISTI NEURON GPU compute node
+
+Allocated GPUs:
+2 x NVIDIA H200
+
+GPU memory:
+143771 MiB per GPU
+
+GPU compute capability:
+9.0
+
+GPU interconnect:
+NVLink between the two allocated H200 GPUs
+
+NVIDIA driver:
+580.105.08
+
+CPU:
+AMD EPYC 9355 32-Core Processor
+
+CPU topology:
+2 sockets
+32 cores per socket
+1 thread per core
+64 logical CPUs
+
+System memory:
+approximately 2.2 TiB
+
+Operating system:
+Rocky Linux 9.4
+
+Kernel:
+5.14.0-427.13.1.el9_4.x86_64
+
+Container runtime:
+SingularityCE 4.3.4
+
+MLCommons Training repository:
+https://github.com/mlcommons/training.git
+
+Pinned MLCommons commit:
+aa344c7fb900e82ed19fb94aebfed50c63ab2204
+
+Workload:
+small_llm_pretraining/nemo
