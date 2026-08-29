@@ -219,3 +219,28 @@ submissions.
 A formal submission would additionally require compliance with the applicable
 MLPerf Training rules, system-description requirements, compliance procedures,
 result packaging, and MLCommons review.
+
+## H200 2GPU TP2/DP1 — Full C4 Dataset
+
+Configuration:
+
+- GPUs: 2 × NVIDIA H200
+- Tensor parallelism: 2
+- Data parallelism: 1
+- Micro batch size: 1
+- Global batch size: 32
+- Dataset: full preprocessed C4 dataset (`en_0` ... `en_7`)
+- Target log perplexity: <= 3.3
+- Seed: 8299
+
+Result:
+
+- `eval_accuracy`: 3.286508560180664
+- `samples_count`: 208864
+- `run_stop`: success
+- `run_start`: 1787919787547 ms
+- `run_stop`: 1787978134300 ms
+- Time-to-target: 58,346.753 seconds
+- Time-to-target: 16:12:26.753
+
+This run used the full eight-shard preprocessed C4 dataset and should be distinguished from the earlier reduced-data reproduction runs that used only the last 256 raw shards.
