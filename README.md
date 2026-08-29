@@ -424,6 +424,8 @@ Before launching, both GPUs should ideally be idle.
 
 ## 9. H200 TP1 / DP2 Configuration
 
+This configuration runs the MLPerf Training Small LLM / Llama 3.1 8B workload on two NVIDIA H200 GPUs using data parallelism across the two GPUs.
+
 Configuration:
 
 ```text
@@ -432,6 +434,8 @@ Tensor Parallelism : 1
 Data Parallelism   : 2
 Micro Batch Size   : 1
 Global Batch Size  : 32
+Dataset            : full preprocessed C4 (`en_0` ... `en_7`)
+Target log-ppl     : <= 3.3
 ```
 
 Config file:
@@ -440,16 +444,24 @@ Config file:
 configs/h200/h200_2gpu_tp1_dp2.sh
 ```
 
-The active configuration defaults to the full preprocessed C4 dataset:
+This configuration uses the full preprocessed C4 dataset by default:
 
 ```bash
 export USE_FULL_DATASET=1
 export USE_LAST_256_SHARDS=0
 ```
 
+A separate NPY index cache is used for this configuration:
+
+```bash
+export TMP_NPY_INDEX="$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp1_dp2_full"
+```
+
 Run:
 
 ```bash
+export MLPERF_ROOT=/scratch/$USER/mlperf-training-llama31
+
 cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
 
 ./scripts/run_h200_tp1.sh
@@ -471,11 +483,29 @@ run_h200_tp1.sh
             +-- pretrain_llama31_kisti.py
 ```
 
+After launch, verify that the full-dataset option is passed to the benchmark:
+
+```bash
+ps -ef | grep 'pretrain_llama31' | grep -v grep
+```
+
+The command line should contain:
+
+```text
+--use_full_dataset
+```
+
+and should not contain:
+
+```text
+--use_last_256_shards
+```
+
 ---
 
 ## 10. H200 TP2 / DP1 Configuration
 
-After TP1/DP2 completes, the TP2/DP1 configuration can be used for comparison.
+This configuration provides a complementary comparison with the TP1/DP2 run by using tensor parallelism across the two H200 GPUs.
 
 Configuration:
 
@@ -485,6 +515,8 @@ Tensor Parallelism : 2
 Data Parallelism   : 1
 Micro Batch Size   : 1
 Global Batch Size  : 32
+Dataset            : full preprocessed C4 (`en_0` ... `en_7`)
+Target log-ppl     : <= 3.3
 ```
 
 Config file:
@@ -493,21 +525,55 @@ Config file:
 configs/h200/h200_2gpu_tp2_dp1.sh
 ```
 
-The active configuration defaults to the full preprocessed C4 dataset:
+This configuration uses the full preprocessed C4 dataset by default:
 
 ```bash
 export USE_FULL_DATASET=1
 export USE_LAST_256_SHARDS=0
 ```
 
+A separate NPY index cache is used for this configuration:
+
+```bash
+export TMP_NPY_INDEX="$MLPERF_ROOT/data/npy_indices/h200_2gpu_tp2_dp1_full"
+```
+
 Run:
 
 ```bash
+export MLPERF_ROOT=/scratch/$USER/mlperf-training-llama31
+
 cd "$MLPERF_ROOT/kisti-neuron-mlperf-training"
 
 ./scripts/run_h200_tp2.sh
 ```
 
+After launch, verify that the full-dataset option is passed to the benchmark:
+
+```bash
+ps -ef | grep 'pretrain_llama31' | grep -v grep
+```
+
+The command line should contain:
+
+```text
+--use_full_dataset
+```
+
+and should not contain:
+
+```text
+--use_last_256_shards
+```
+
+The TP2/DP1 full-dataset configuration has been successfully reproduced with:
+
+```text
+Final eval_accuracy : 3.286508560180664
+Samples-to-target   : 208864
+Time-to-target      : 16:12:26.753
+run_stop            : success
+```
 ---
 
 ## 11. Monitor H200 Runs
